@@ -1,41 +1,45 @@
 # small_LLM — Product architecture
 
-## Product surface
-
-- Public Next.js chat playground (anonymous, throttled).
-- Django accounts and token authentication.
-- Private conversation history scoped to the authenticated user.
-- Developer console for creating, listing and revoking API keys. Raw keys are displayed once; only SHA-256 hashes are persisted.
-- OpenAI-compatible `GET /v1/models` and `POST /v1/chat/completions` endpoints.
-- Self-hosted llama.cpp model server; the model container is internal-only.
-
 ## Runtime topology
 
-`Browser → Next.js → Django REST API → private llama.cpp → DeepSeek GGUF`
+`Browser / Agent → Django REST API → private llama.cpp → DeepSeek GGUF`
 
-PostgreSQL stores accounts, API keys, conversations and messages. Redis is included in the compose stack for the next iteration of shared throttling and background work. The current DRF throttle configuration is application-level and should not be treated as a DDoS defense.
+Next.js provides the browser UI. Django handles accounts, API keys, conversation ownership, validation, throttling and the OpenAI-compatible API. PostgreSQL stores durable application records. Redis is configured as Django's shared cache/throttle backend. llama.cpp remains internal to the Compose network.
 
-## Local run
+## API surface
 
-1. Copy `.env.product.example` to `.env.product` and replace all secrets.
-2. Run `docker compose --env-file .env.product -f docker-compose.product.yml up --build` on a host with Docker Compose and NVIDIA Container Toolkit.
-3. Open `http://localhost:3000`; the Django API is on `http://localhost:8000`.
-4. Create an account at `/signup`, then manage API credentials at `/developers`.
+- `GET /api/health/` — public API health.
+- `POST /api/chat/` — public playground inference with anonymous and user throttling.
+- `POST /api/auth/register/` — register and issue an account token.
+- `POST /api/auth/token/` — obtain an account token.
+- `GET|POST /api/keys/` — account-token-only key management.
+- `DELETE /api/keys/{id}/` — revoke an owned API key.
+- `GET|POST /api/conversations/` — account-token-only conversation operations.
+- `GET|DELETE /api/conversations/{id}/` — retrieve or delete an owned conversation.
+- `GET /v1/models` — API-key or account-token protected model discovery.
+- `POST /v1/chat/completions` — API-key or account-token protected inference.
 
-## API
+Account operations require `Authorization: Token <account-token>`. Developer inference uses `Authorization: Bearer <small_LLM_API_key>`. API keys are stored as hashes and displayed only at creation.
 
-- `GET /api/health/` — public health.
-- `POST /api/chat/` — public, throttled playground endpoint.
-- `POST /api/auth/register/` — create account; returns a DRF token.
-- `POST /api/auth/token/` — obtain token with username/password.
-- `GET|POST /api/keys/` — authenticated API key management.
-- `DELETE /api/keys/{id}/` — revoke own key.
-- `GET /api/conversations/` — authenticated user's conversations.
-- `GET /v1/models` — API-key protected model list.
-- `POST /v1/chat/completions` — API-key protected OpenAI-compatible inference.
+## Local GPU deployment
 
-For API-key requests use `Authorization: Bearer sk-small-...`. For account endpoints use `Authorization: Token <django-token>`.
+1. Copy `.env.product.example` to `.env.product`.
+2. Replace all example secrets with unique values.
+3. Install Docker Compose and NVIDIA Container Toolkit.
+4. Run `docker compose --env-file .env.product -f docker-compose.product.yml up --build`.
+5. Open the Next.js frontend at port 3000 and Django at port 8000.
 
-## Production hardening still required
+Set `NEXT_PUBLIC_API_BASE_URL` to the browser-reachable Django URL. Do not use the internal Docker hostname in a browser build. The model port is not published to the host.
 
-Before public launch: implement streaming/SSE, email verification and password reset, robust login/session UX, CSRF-safe browser auth, Redis-backed atomic quotas, per-key usage and token accounting, abuse reporting, observability, backup/restore, TLS and reverse-proxy routing, and a Camber-supported persistent service/port exposure workflow. The Camber GPU job must be provisioned separately; this compose file does not provision Camber resources or create a public endpoint.
+## Operational security
+
+- Production Django startup fails if `DJANGO_SECRET_KEY` is absent.
+- Redis is the shared cache and throttle backend.
+- Public inference has anonymous, authenticated-user and scoped throttles.
+- Request payloads have message-count, content-size, token and temperature validation.
+- Conversation ownership is verified before upstream inference.
+- API-key management and conversation endpoints require an account token, not a developer API key.
+
+## Remaining production work
+
+This is a deployable foundation, not a production certification. Before public launch, add secure HttpOnly browser sessions and CSRF flow, password reset and email verification, usage metering and atomic quotas, streaming/SSE, durable job orchestration for long-running agent tasks, TLS/reverse proxy, monitoring/error tracking, database backups and tested recovery, and end-to-end tests against a real model server. Provisioning a Camber GPU and exposing a public gateway are separate infrastructure tasks.
