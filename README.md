@@ -55,3 +55,10 @@ The browser-facing `NEXT_PUBLIC_API_BASE_URL` must point to the public Django AP
 This repository provides a Compose deployment foundation, not a completed Camber deployment. The GPU host must support NVIDIA containers and persistent volumes. TLS/reverse-proxy configuration, backup automation, monitoring, usage accounting, streaming, password reset/email verification and secure browser session cookies remain launch work. GPU compute and storage are not automatically free.
 
 The original root FastAPI files and Render configuration are retained as a legacy prototype; the Django/Next.js stack is the current product direction.
+
+
+## Security and operating notes
+
+The API validates model IDs and registration input, applies throttles to account registration, inference and API-key management, and refreshes conversation activity ordering after replies. Configure `SECURE_SSL_REDIRECT=true` and HSTS only when the public origin is served over HTTPS and the reverse proxy forwards the original scheme correctly.
+
+**Browser authentication caveat:** the current browser client stores the DRF account token in local storage. Before a high-assurance public launch, replace this with a same-site HttpOnly session-cookie flow and CSRF protection. Never put developer API keys in browser code.

@@ -28,6 +28,10 @@ class ChatCompletionsView(APIView):
         serializer = ChatCompletionInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        requested_model = data.get("model")
+        if requested_model and requested_model not in {settings.INFERENCE_MODEL, "small_LLM"}:
+            return Response({"error": {"message": f"This deployment serves only {settings.INFERENCE_MODEL}."}}, status=400)
+
         conversation = None
         conversation_id = data.get("conversation_id")
         if conversation_id is not None:
@@ -36,13 +40,7 @@ class ChatCompletionsView(APIView):
             conversation = get_object_or_404(Conversation, pk=conversation_id, user=request.user)
 
         prompt = data["messages"]
-        if sum(len(item["content"]) for item in prompt) > settings.MAX_PROMPT_CHARS:
-            return Response({"error": {"message": "Prompt exceeds the configured size limit."}}, status=413)
-        payload = {
-            "model": settings.INFERENCE_MODEL, "messages": prompt,
-            "temperature": data["temperature"],
-            "max_tokens": min(data["max_tokens"], settings.MAX_OUTPUT_TOKENS), "stream": False,
-        }
+        payload = {"model": settings.INFERENCE_MODEL, "messages": prompt, "temperature": data["temperature"], "max_tokens": min(data["max_tokens"], settings.MAX_OUTPUT_TOKENS), "stream": False}
         try:
             with httpx.Client(timeout=httpx.Timeout(settings.INFERENCE_TIMEOUT_SECONDS, connect=10)) as client:
                 upstream = client.post(settings.INFERENCE_URL, json=payload)
@@ -63,7 +61,8 @@ class ChatCompletionsView(APIView):
             Message.objects.create(conversation=conversation, role="assistant", content=answer)
             if conversation.title == "New conversation" and last_user:
                 conversation.title = last_user["content"][:157] + ("..." if len(last_user["content"]) > 157 else "")
-                conversation.save(update_fields=["title", "updated_at"])
+            # Update activity ordering for both new and existing conversations.
+            conversation.save(update_fields=["title", "updated_at"])
         return Response(result)
 
 class ConversationListCreateView(generics.ListCreateAPIView):

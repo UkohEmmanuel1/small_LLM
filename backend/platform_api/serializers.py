@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import serializers
 from .models import Conversation, Message
 
@@ -27,8 +28,8 @@ class ChatCompletionInputSerializer(serializers.Serializer):
     stream = serializers.BooleanField(required=False, default=False)
 
     def validate_messages(self, messages):
-        if sum(len(item["content"]) for item in messages) > 24000:
-            raise serializers.ValidationError("Combined prompt content exceeds the 24,000-character limit.")
+        if sum(len(item["content"]) for item in messages) > settings.MAX_PROMPT_CHARS:
+            raise serializers.ValidationError(f"Combined prompt content exceeds the {settings.MAX_PROMPT_CHARS}-character limit.")
         if not any(item["role"] == "user" for item in messages):
             raise serializers.ValidationError("At least one user message is required.")
         return messages

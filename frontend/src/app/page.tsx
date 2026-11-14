@@ -105,14 +105,14 @@ export default function Home() {
   return <div className="shell">
     <aside className="sidebar">
       <div className="brand">small<span>_</span>LLM</div>
-      <button className="newchat" onClick={newConversation}>＋　New conversation</button>
+      <button className="newchat" disabled={busy} onClick={newConversation}>＋　New conversation</button>
       {signedIn && <div style={{ marginTop: 24 }}>
         <div className="eyebrow">YOUR HISTORY</div>
-        {conversations.map((item) => <button key={item.id} onClick={() => openConversation(item.id)} className="newchat" style={{ marginTop: 8, textAlign: 'left', fontSize: 12 }}>{item.title}</button>)}
+        {conversations.map((item) => <button key={item.id} disabled={busy} onClick={() => openConversation(item.id)} className="newchat" style={{ marginTop: 8, textAlign: 'left', fontSize: 12 }}>{item.title}</button>)}
       </div>}
       <div className="side-note">YOUR PRIVATE AI WORKSPACE<br/>Open-weight intelligence. Self-hosted inference. Built for builders.</div>
       <div style={{ marginTop: 20, display: 'grid', gap: 10 }}>
-        {signedIn ? <button className="newchat" onClick={() => { localStorage.removeItem('smallllm_token'); setSignedIn(false); setConversations([]); newConversation(); }}>Sign out</button> : <Link href="/login">Sign in</Link>}
+        {signedIn ? <button className="newchat" disabled={busy} onClick={() => { localStorage.removeItem('smallllm_token'); setSignedIn(false); setConversations([]); newConversation(); }}>Sign out</button> : <Link href="/login">Sign in</Link>}
         <Link href="/signup">Create account</Link>
         <Link href="/developers">Developer console</Link>
       </div>
