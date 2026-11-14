@@ -10,6 +10,7 @@ def test_health_is_public():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.json()["provider"] == "self-hosted"
 
 
 def test_playground_is_served():
@@ -25,16 +26,13 @@ def test_models_requires_configured_api_key(monkeypatch):
     assert response.status_code == 200
 
 
-def test_developer_api_returns_clear_setup_error(monkeypatch):
+def test_developer_api_requires_api_key(monkeypatch):
     monkeypatch.setattr(service, "API_KEYS", {"test-secret"})
-    monkeypatch.setattr(service, "HF_TOKEN", "")
     response = client.post(
         "/v1/chat/completions",
-        headers={"Authorization": "Bearer test-secret"},
         json={"messages": [{"role": "user", "content": "Hello"}]},
     )
-    assert response.status_code == 503
-    assert "HF_TOKEN" in response.json()["detail"]
+    assert response.status_code == 401
 
 
 def test_streaming_is_rejected_explicitly(monkeypatch):
