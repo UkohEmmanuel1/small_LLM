@@ -1,147 +1,158 @@
 # small_LLM
 
-**A lightweight AI chat playground and OpenAI-compatible developer API powered by open-weight language models.**
+**A self-hosted AI playground and OpenAI-compatible API powered by open-weight DeepSeek.**
 
-small_LLM keeps model inference on a hosted provider rather than requiring every visitor to download model weights or requiring this web service to run a GPU. The original from-scratch GPT training experiments remain in the repository; the public product layer is a separate inference application.
-
-## Product capabilities
-
-- Browser-based AI chat playground.
-- OpenAI-compatible `POST /v1/chat/completions` endpoint.
-- `GET /v1/models` model discovery endpoint.
-- Interactive API documentation at `/docs`.
-- Health endpoint at `/health`.
-- Configurable Hugging Face Inference Providers model.
-- API-key protection for developer endpoints.
-- Basic per-IP demo rate limiting and bounded input/output sizes.
+small_LLM runs model inference on the GPU attached to your Camber compute job. It does not call the DeepSeek API or Hugging Face Inference Providers, and it does not require a paid per-token inference API.
 
 ## Architecture
 
 ```text
-Browser chat ───────┐
-                    ├── FastAPI application ── Hugging Face Inference Providers
-Developer SDK/API ──┘        │
+Public browser chat ─┐
+                     ├── FastAPI gateway ── llama.cpp server ── DeepSeek GGUF
+Your private agents ─┘       │                 Camber L4 GPU
                              ├── /health
-                             ├── /v1/models
-                             └── /v1/chat/completions
+                             ├── /v1/models (API key)
+                             └── /v1/chat/completions (API key)
 ```
 
-The default model is `Qwen/Qwen2.5-1.5B-Instruct:cheapest`. Change it with `MODEL_ID` to another chat model available to your Hugging Face Inference Providers account. Each deployment intentionally serves one configured model to prevent visitors from selecting arbitrary, potentially more expensive models.
+Default model: **DeepSeek-R1-Distill-Qwen-7B, Q4_K_M GGUF**. This is a practical first model for an NVIDIA L4 with 24 GB VRAM. It is a distilled 7B model, not the full DeepSeek V3/R1 model.
 
-## Run locally (Windows CMD / PowerShell)
+## Cost and availability — read before deployment
 
-Python 3.11 is recommended.
+- Model weights are open-weight and downloaded from Hugging Face; inference runs locally in your Camber GPU job.
+- There is no per-token DeepSeek API charge.
+- **GPU compute is not automatically free.** Camber's published on-demand GPU pricing lists one L4 on an XSMALL (8 CPU / 32 GB RAM) node at 1.5 credits/hour, and states that one credit equals USD 1. The free plan currently lists zero GPU hours. Your student/trial benefits and account dashboard may have different allowances; verify your remaining GPU credits before starting a job.
+- A continuously running service consumes GPU hours continuously. Stop the Camber job when you are not using it. A free allowance cannot provide guaranteed 24/7 hosting.
+- Camber's CLI/compute job is the runtime. A public endpoint also requires a supported way to expose or tunnel the service port. Do not expose the model container directly; expose only the FastAPI gateway.
 
-```bat
-py -3.11 -m venv .venv
-.venv\Scripts\activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-copy .env.example .env
-```
+Camber references:
+- https://docs.cambercloud.com/docs/nodes-pricing/
+- https://docs.cambercloud.com/docs/compute/
+- https://docs.cambercloud.com/
 
-Set your Hugging Face token in the terminal before starting the server:
+## Requirements
 
-**Windows CMD**
-```bat
-set HF_TOKEN=hf_your_token_here
-set API_KEYS=sk-small-replace-with-a-long-random-secret
-uvicorn app:app --reload
-```
+- Camber account with GPU access/credits.
+- Camber CLI installed and authenticated.
+- Docker Engine with NVIDIA Container Toolkit support on the compute node, or a Camber environment that provides equivalent GPU-enabled container execution.
+- NVIDIA L4 (24 GB VRAM) recommended for the included 7B Q4 model.
+- A long random API key.
 
-**PowerShell**
-```powershell
-$env:HF_TOKEN="hf_your_token_here"
-$env:API_KEYS="sk-small-replace-with-a-long-random-secret"
-uvicorn app:app --reload
-```
+## Deploy on Camber
 
-Open http://127.0.0.1:8000 for the playground and http://127.0.0.1:8000/docs for the API reference.
+The repository now includes a Docker Compose stack. It runs:
+1. `model`: llama.cpp CUDA server; downloads the Q4_K_M model once into a persistent Docker volume.
+2. `api`: FastAPI gateway and browser playground.
 
-## Hugging Face setup
-
-1. Create an account at https://huggingface.co/.
-2. Create a User Access Token with permission to make Inference Providers calls.
-3. Add it as the server environment variable `HF_TOKEN`. Never commit the token or expose it in browser JavaScript.
-4. Check your Inference Providers settings and model availability before making the service public.
-
-Hugging Face's free-tier credits and provider availability can change. Do not promise unlimited free inference. Set spending limits where available and monitor provider usage.
-
-## Developer API
-
-The operator must configure `API_KEYS` as one or more comma-separated, high-entropy secrets. The API key is sent as a Bearer token. Do not use the demo endpoint as an unrestricted production API.
-
-### List models
+### 1. Clone the repository on the Camber compute environment
 
 ```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" https://YOUR_HOST/v1/models
+git clone https://github.com/UkohEmmanuel1/small_LLM.git
+cd small_LLM
+git checkout feat/camber-self-hosted
 ```
 
-### Chat completion
+### 2. Configure the API key
 
 ```bash
-curl https://YOUR_HOST/v1/chat/completions \
+cp .env.example .env
+python -c "import secrets; print('API_KEYS=sk-small-' + secrets.token_urlsafe(40))" > .env
+```
+
+Keep `.env` private. Do not commit it or paste the key into public chats.
+
+### 3. Start the model and API
+
+```bash
+docker compose up -d --build
+docker compose logs -f model
+```
+
+The first startup downloads several GB of model weights. Wait until the llama.cpp server reports that it is listening, then check:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Open the exposed Camber service URL (or your configured secure tunnel) on port 8000. The gateway serves the playground at `/` and API docs at `/docs`.
+
+### 4. Verify the developer API
+
+```bash
+curl http://localhost:8000/v1/models \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen2.5-1.5B-Instruct:cheapest",
-    "messages": [{"role": "user", "content": "Explain small language models."}],
-    "temperature": 0.7,
-    "max_tokens": 256,
-    "stream": false
-  }'
+  -d '{"model":"deepseek-r1-distill-qwen-7b","messages":[{"role":"user","content":"Hello"}],"max_tokens":256}'
 ```
 
-The request and response use the OpenAI chat-completions format, so clients configured with an OpenAI-compatible base URL can integrate it.
+### 5. Connect your agents
 
-Python example:
+Use any OpenAI-compatible SDK with this base URL and the API key:
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://YOUR_HOST/v1",
+    base_url="https://YOUR-CAMBER-PUBLIC-ENDPOINT/v1",
     api_key="YOUR_API_KEY",
 )
-result = client.chat.completions.create(
-    model="Qwen/Qwen2.5-1.5B-Instruct:cheapest",
-    messages=[{"role": "user", "content": "Hello from my app!"}],
+
+response = client.chat.completions.create(
+    model="deepseek-r1-distill-qwen-7b",
+    messages=[{"role": "user", "content": "Summarise this research."}],
+    max_tokens=512,
 )
-print(result.choices[0].message.content)
+print(response.choices[0].message.content)
 ```
 
-Install the client with `pip install openai`.
+### 6. Stop the GPU workload when finished
 
-## Deploy to Render
+```bash
+docker compose down
+```
 
-1. Push this repository branch to GitHub.
-2. In Render, create a new Blueprint and select this repository.
-3. Render reads `render.yaml` and creates the web service.
-4. Set `HF_TOKEN` to your Hugging Face inference token.
-5. Set `API_KEYS` to a long random API key (or comma-separated keys).
-6. Deploy and test `/health`, the playground, and `/docs`.
+To stop and remove downloaded model weights too (will require downloading them again next time):
 
-The included Render configuration uses a free web service for prototyping. Free services can sleep after inactivity and have ephemeral filesystems; this app does not rely on local persistent state. Free instances are not recommended for production workloads. Inference itself is billed separately by the model provider.
+```bash
+docker compose down -v
+```
 
-## Tests
+## Windows CMD note
+
+The Camber install script ending in `.sh` requires a Bash-compatible shell. Windows CMD does not provide Bash. Use WSL or Git Bash to run the install script, then run Camber CLI commands in that shell. Alternatively, follow Camber's current native Windows installation instructions if provided for your CLI version.
+
+## API behavior and current limitations
+
+- `GET /health`: public health endpoint.
+- `POST /api/chat`: public playground endpoint with a small per-process IP rate limit.
+- `GET /v1/models`: API-key protected model discovery.
+- `POST /v1/chat/completions`: API-key protected OpenAI-compatible endpoint.
+- Streaming is explicitly not enabled yet.
+- Rate limiting is in-memory and resets when the API restarts. It is not suitable as the only protection for a high-traffic public API.
+- The public playground is intentionally rate-limited. Do not publish an unrestricted GPU endpoint without stronger abuse controls.
+- The included compose stack is a single-node prototype, not a horizontally scaled production platform.
+
+## Local development
 
 ```bat
+py -3.11 -m venv .venv
+.venv\\Scripts\\activate
 pip install -r requirements-dev.txt
 pytest -q
 ```
 
-## Important operational limitations
+## Original experiments
 
-This is a deployable MVP, not yet a fully managed multi-tenant API business. API keys are operator-configured through environment variables; there is no self-service account dashboard, billing, persistent usage ledger, streaming, or per-customer quotas yet. Demo rate limiting is in-process and resets when the service restarts. Add a persistent database, distributed rate limiting, observability, and a proper key-management workflow before scaling to public commercial use.
-
-## Original model experiments
-
-- `gpt (1).py`: GPT-style model implementation and training/generation CLI.
+- `gpt (1).py`: experimental GPT-style model implementation and training/generation CLI.
 - `live.py`: RSS collection and retrieval-augmented experimental workflow.
-- `feeds.txt`: sample RSS/Atom feeds.
 
-Install the additional model-training dependencies with `pip install -r requirements-training.txt`. The public application currently uses a pretrained hosted model, as selected for the product MVP. It does not claim that the experimental from-scratch model has been pretrained or production-trained.
+These experiments are separate from the DeepSeek inference service. The DeepSeek model is a pretrained open-weight model; the repository's experimental GPT is not the model served by this deployment.
 
 ## License
 
-No license is currently declared. Add an explicit license before accepting external contributions or distributing the code under an open-source license.
+No license is currently declared. Add an explicit license before accepting external contributions or redistributing the repository.
