@@ -1,0 +1,48 @@
+name: Django and Next.js CI
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DJANGO_DEBUG: "true"
+      REDIS_URL: locmem://ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt ruff
+      - run: ruff check config/settings.py config/urls.py platform_api/auth_views.py platform_api/key_views.py platform_api/views.py platform_api/serializers.py platform_api/public_views.py platform_api/permissions.py platform_api/tests.py --select E4,E7,E9
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-audit --no-fund
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose --env-file .env.product.example -f docker-compose.product.yml config --quiet
+      - run: docker build -t small-llm-backend ./backend
+      - run: docker build --build-arg NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 -t small-llm-frontend ./frontend

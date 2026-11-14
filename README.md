@@ -1,158 +1,57 @@
 # small_LLM
 
-**A self-hosted AI playground and OpenAI-compatible API powered by open-weight DeepSeek.**
+**A self-hosted AI workspace and OpenAI-compatible inference API built with Django, Next.js and open-weight DeepSeek.**
 
-small_LLM runs model inference on the GPU attached to your Camber compute job. It does not call the DeepSeek API or Hugging Face Inference Providers, and it does not require a paid per-token inference API.
+Django is the API/control plane, Next.js is the web client, PostgreSQL stores user and conversation data, Redis provides shared throttling/cache state, and llama.cpp serves the model privately inside the container network.
 
-## Architecture
+## Product capabilities
 
-```text
-Public browser chat ─┐
-                     ├── FastAPI gateway ── llama.cpp server ── DeepSeek GGUF
-Your private agents ─┘       │                 Camber L4 GPU
-                             ├── /health
-                             ├── /v1/models (API key)
-                             └── /v1/chat/completions (API key)
-```
+- Anonymous chat playground with configurable throttling.
+- Account registration and username/password login.
+- Saved conversations for authenticated users.
+- Developer API key creation, listing and revocation.
+- API keys are shown once and stored as SHA-256 hashes.
+- OpenAI-compatible model discovery and chat-completion routes.
+- PostgreSQL, Redis and GPU model containers.
+- Separate backend and frontend container builds.
 
-Default model: **DeepSeek-R1-Distill-Qwen-7B, Q4_K_M GGUF**. This is a practical first model for an NVIDIA L4 with 24 GB VRAM. It is a distilled 7B model, not the full DeepSeek V3/R1 model.
+## Local development / GPU host
 
-## Cost and availability — read before deployment
+1. Copy `.env.product.example` to `.env.product`.
+2. Replace the Django secret and database password with unique values.
+3. Ensure Docker Compose and NVIDIA Container Toolkit are installed on the host.
+4. Run:
 
-- Model weights are open-weight and downloaded from Hugging Face; inference runs locally in your Camber GPU job.
-- There is no per-token DeepSeek API charge.
-- **GPU compute is not automatically free.** Camber's published on-demand GPU pricing lists one L4 on an XSMALL (8 CPU / 32 GB RAM) node at 1.5 credits/hour, and states that one credit equals USD 1. The free plan currently lists zero GPU hours. Your student/trial benefits and account dashboard may have different allowances; verify your remaining GPU credits before starting a job.
-- A continuously running service consumes GPU hours continuously. Stop the Camber job when you are not using it. A free allowance cannot provide guaranteed 24/7 hosting.
-- Camber's CLI/compute job is the runtime. A public endpoint also requires a supported way to expose or tunnel the service port. Do not expose the model container directly; expose only the FastAPI gateway.
+   ```bash
+   docker compose --env-file .env.product -f docker-compose.product.yml up --build
+   ```
 
-Camber references:
-- https://docs.cambercloud.com/docs/nodes-pricing/
-- https://docs.cambercloud.com/docs/compute/
-- https://docs.cambercloud.com/
+5. Open `http://localhost:3000`.
+6. Create an account at `/signup`, sign in at `/login`, and create developer keys at `/developers`.
 
-## Requirements
+The first model startup downloads DeepSeek-R1-Distill-Qwen-7B Q4_K_M weights. The model server is internal-only. Do not publish port 8080.
 
-- Camber account with GPU access/credits.
-- Camber CLI installed and authenticated.
-- Docker Engine with NVIDIA Container Toolkit support on the compute node, or a Camber environment that provides equivalent GPU-enabled container execution.
-- NVIDIA L4 (24 GB VRAM) recommended for the included 7B Q4 model.
-- A long random API key.
+## API
 
-## Deploy on Camber
+- `GET /api/health/`
+- `POST /api/chat/` — anonymous or authenticated playground inference.
+- `POST /api/auth/register/`
+- `POST /api/auth/token/` — obtain an account token.
+- `GET|POST /api/keys/` — account-token-only key management.
+- `DELETE /api/keys/{id}/` — revoke an owned key.
+- `GET|POST /api/conversations/` — account-token-only conversation management.
+- `GET|DELETE /api/conversations/{id}/`
+- `GET /v1/models`
+- `POST /v1/chat/completions`
 
-The repository now includes a Docker Compose stack. It runs:
-1. `model`: llama.cpp CUDA server; downloads the Q4_K_M model once into a persistent Docker volume.
-2. `api`: FastAPI gateway and browser playground.
+Use `Authorization: Token <account-token>` for account and conversation operations. Use `Authorization: Bearer <small_LLM_API_key>` for OpenAI-compatible `/v1/*` endpoints.
 
-### 1. Clone the repository on the Camber compute environment
+## Configuration
 
-```bash
-git clone https://github.com/UkohEmmanuel1/small_LLM.git
-cd small_LLM
-git checkout feat/camber-self-hosted
-```
+The browser-facing `NEXT_PUBLIC_API_BASE_URL` must point to the public Django API origin, not the Docker-only service hostname. Set `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS` to the real deployment domains. Keep secrets out of Git and frontend environment variables.
 
-### 2. Configure the API key
+## Deployment caveats
 
-```bash
-cp .env.example .env
-python -c "import secrets; print('API_KEYS=sk-small-' + secrets.token_urlsafe(40))" > .env
-```
+This repository provides a Compose deployment foundation, not a completed Camber deployment. The GPU host must support NVIDIA containers and persistent volumes. TLS/reverse-proxy configuration, backup automation, monitoring, usage accounting, streaming, password reset/email verification and secure browser session cookies remain launch work. GPU compute and storage are not automatically free.
 
-Keep `.env` private. Do not commit it or paste the key into public chats.
-
-### 3. Start the model and API
-
-```bash
-docker compose up -d --build
-docker compose logs -f model
-```
-
-The first startup downloads several GB of model weights. Wait until the llama.cpp server reports that it is listening, then check:
-
-```bash
-curl http://localhost:8000/health
-```
-
-Open the exposed Camber service URL (or your configured secure tunnel) on port 8000. The gateway serves the playground at `/` and API docs at `/docs`.
-
-### 4. Verify the developer API
-
-```bash
-curl http://localhost:8000/v1/models \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-```bash
-curl http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-r1-distill-qwen-7b","messages":[{"role":"user","content":"Hello"}],"max_tokens":256}'
-```
-
-### 5. Connect your agents
-
-Use any OpenAI-compatible SDK with this base URL and the API key:
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="https://YOUR-CAMBER-PUBLIC-ENDPOINT/v1",
-    api_key="YOUR_API_KEY",
-)
-
-response = client.chat.completions.create(
-    model="deepseek-r1-distill-qwen-7b",
-    messages=[{"role": "user", "content": "Summarise this research."}],
-    max_tokens=512,
-)
-print(response.choices[0].message.content)
-```
-
-### 6. Stop the GPU workload when finished
-
-```bash
-docker compose down
-```
-
-To stop and remove downloaded model weights too (will require downloading them again next time):
-
-```bash
-docker compose down -v
-```
-
-## Windows CMD note
-
-The Camber install script ending in `.sh` requires a Bash-compatible shell. Windows CMD does not provide Bash. Use WSL or Git Bash to run the install script, then run Camber CLI commands in that shell. Alternatively, follow Camber's current native Windows installation instructions if provided for your CLI version.
-
-## API behavior and current limitations
-
-- `GET /health`: public health endpoint.
-- `POST /api/chat`: public playground endpoint with a small per-process IP rate limit.
-- `GET /v1/models`: API-key protected model discovery.
-- `POST /v1/chat/completions`: API-key protected OpenAI-compatible endpoint.
-- Streaming is explicitly not enabled yet.
-- Rate limiting is in-memory and resets when the API restarts. It is not suitable as the only protection for a high-traffic public API.
-- The public playground is intentionally rate-limited. Do not publish an unrestricted GPU endpoint without stronger abuse controls.
-- The included compose stack is a single-node prototype, not a horizontally scaled production platform.
-
-## Local development
-
-```bat
-py -3.11 -m venv .venv
-.venv\\Scripts\\activate
-pip install -r requirements-dev.txt
-pytest -q
-```
-
-## Original experiments
-
-- `gpt (1).py`: experimental GPT-style model implementation and training/generation CLI.
-- `live.py`: RSS collection and retrieval-augmented experimental workflow.
-
-These experiments are separate from the DeepSeek inference service. The DeepSeek model is a pretrained open-weight model; the repository's experimental GPT is not the model served by this deployment.
-
-## License
-
-No license is currently declared. Add an explicit license before accepting external contributions or redistributing the repository.
+The original root FastAPI files and Render configuration are retained as a legacy prototype; the Django/Next.js stack is the current product direction.
