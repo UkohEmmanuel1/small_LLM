@@ -45,7 +45,7 @@ export default function Home() {
     }
     const data = await response.json();
     setConversationId(id);
-    setTurns((data.messages || []).filter((m: Turn) => m.role !== 'system'));
+    setTurns((data.messages || []) as Turn[]);
     setError('');
   }
 
