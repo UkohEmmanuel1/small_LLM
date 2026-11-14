@@ -7,19 +7,24 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes: [postgres-data:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL","pg_isready -U ${POSTGRES_USER:-smallllm} -d ${POSTGRES_DB:-smallllm}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smallllm} -d ${POSTGRES_DB:-smallllm}"]
       interval: 10s
       timeout: 5s
       retries: 10
     restart: unless-stopped
   redis:
     image: redis:7-alpine
-    command: ["redis-server","--appendonly","yes"]
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
     volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
   model:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda
-    command: ["-hf","bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF:Q4_K_M","--host","0.0.0.0","--port","8080","--ctx-size","8192","--n-gpu-layers","99","--alias","deepseek-r1-distill-qwen-7b"]
+    command: ["-hf", "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF:Q4_K_M", "--host", "0.0.0.0", "--port", "8080", "--ctx-size", "8192", "--n-gpu-layers", "99", "--alias", "deepseek-r1-distill-qwen-7b"]
     expose: ["8080"]
     volumes: [model-cache:/root/.cache]
     deploy:
@@ -37,13 +42,19 @@ services:
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       DATABASE_URL: postgresql://${POSTGRES_USER:-smallllm}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-smallllm}
+      REDIS_URL: redis://redis:6379/1
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
       INFERENCE_URL: http://model:8080/v1/chat/completions
       INFERENCE_MODEL: deepseek-r1-distill-qwen-7b
       MAX_OUTPUT_TOKENS: ${MAX_OUTPUT_TOKENS:-1024}
+      ANON_RATE: ${ANON_RATE:-5/min}
+      USER_RATE: ${USER_RATE:-30/min}
+      INFERENCE_RATE: ${INFERENCE_RATE:-10/min}
     ports: ["${API_PORT:-8000}:8000"]
     depends_on:
       db: {condition: service_healthy}
+      redis: {condition: service_healthy}
       model: {condition: service_started}
     restart: unless-stopped
   frontend:
