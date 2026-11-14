@@ -76,7 +76,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
 
 class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ConversationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAccountTokenUser]
     http_method_names = ["get", "delete", "head", "options"]
     def get_queryset(self):
         return Conversation.objects.filter(user=self.request.user).prefetch_related("messages")
