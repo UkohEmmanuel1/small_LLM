@@ -70,10 +70,13 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "false").lower() == "true"
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/1")
-CACHES = {"default": {
-    "BACKEND": "django_redis.cache.RedisCache", "LOCATION": REDIS_URL,
-    "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"}, "KEY_PREFIX": "smallllm",
-}}
+if REDIS_URL.startswith("locmem://"):
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "smallllm-ci"}}
+else:
+    CACHES = {"default": {
+        "BACKEND": "django_redis.cache.RedisCache", "LOCATION": REDIS_URL,
+        "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"}, "KEY_PREFIX": "smallllm",
+    }}
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication", "platform_api.authentication.ProjectAPIKeyAuthentication",
