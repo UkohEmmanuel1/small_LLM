@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: small-llm
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: HF_TOKEN
+        sync: false
+      - key: API_KEYS
+        sync: false
+      - key: MODEL_ID
+        value: Qwen/Qwen2.5-1.5B-Instruct:cheapest
+      - key: MAX_OUTPUT_TOKENS
+        value: "512"
+      - key: DEMO_REQUESTS_PER_MINUTE
+        value: "8"
