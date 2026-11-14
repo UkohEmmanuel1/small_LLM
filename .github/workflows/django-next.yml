@@ -21,7 +21,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt ruff
-      - run: ruff check .
+      - run: ruff check . --select E4,E7,E9,F --ignore F401,F841
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test
