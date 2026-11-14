@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework.throttling import ScopedRateThrottle
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, ChatCompletionInputSerializer
+from .permissions import IsAccountTokenUser
 
 class HealthView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -67,7 +68,7 @@ class ChatCompletionsView(APIView):
 
 class ConversationListCreateView(generics.ListCreateAPIView):
     serializer_class = ConversationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAccountTokenUser]
     def get_queryset(self):
         return Conversation.objects.filter(user=self.request.user).prefetch_related("messages")
     def perform_create(self, serializer):
