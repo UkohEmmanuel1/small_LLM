@@ -2,12 +2,14 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 from .models import APIKey, Conversation
 
 class PlatformAPITests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="tester", password="a-secure-test-password-123")
+        self.token, _ = Token.objects.get_or_create(user=self.user)
         self.client = APIClient()
 
     def test_health_is_public(self):
@@ -28,9 +30,14 @@ class PlatformAPITests(TestCase):
     def test_conversations_are_private(self):
         Conversation.objects.create(user=self.user, title="Private")
         other = get_user_model().objects.create_user(username="other", password="another-secure-password-123")
-        self.client.force_authenticate(other)
-        response = self.client.get("/api/conversations/")
+        other_token, _ = Token.objects.get_or_create(user=other)
+        response = self.client.get("/api/conversations/", HTTP_AUTHORIZATION=f"Token {other_token.key}")
         self.assertEqual(len(response.data["results"]), 0)
+
+    def test_api_key_cannot_manage_account_credentials(self):
+        _, raw = APIKey.issue(self.user)
+        response = self.client.get("/api/keys/", HTTP_AUTHORIZATION=f"Bearer {raw}")
+        self.assertEqual(response.status_code, 403)
 
     def test_registration_rejects_short_password(self):
         response = self.client.post("/api/auth/register/", {"username": "newuser", "password": "short"}, format="json")
