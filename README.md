@@ -1,50 +1,57 @@
 # small_LLM
 
-**A self-hosted AI product for chat and developer workflows, built with Django, Django REST Framework, Next.js and open-weight DeepSeek.**
+**A self-hosted AI workspace and OpenAI-compatible inference API built with Django, Next.js and open-weight DeepSeek.**
 
-The product stack lives in `backend/` and `frontend/`. Django is the control plane and OpenAI-compatible API; Next.js is the web application; llama.cpp serves the local DeepSeek GGUF model on private infrastructure.
+Django is the API/control plane, Next.js is the web client, PostgreSQL stores user and conversation data, Redis provides shared throttling/cache state, and llama.cpp serves the model privately inside the container network.
 
-## Product foundation
+## Product capabilities
 
-- Public chat playground with anonymous request throttling.
-- Account registration and token authentication.
-- Private conversation data model and authenticated conversation endpoints.
-- Developer API key creation, listing and revocation; raw keys are shown only once and stored as hashes.
-- OpenAI-compatible model discovery and chat-completion endpoints.
-- PostgreSQL, Redis and GPU model services in `docker-compose.product.yml`.
+- Anonymous chat playground with configurable throttling.
+- Account registration and username/password login.
+- Saved conversations for authenticated users.
+- Developer API key creation, listing and revocation.
+- API keys are shown once and stored as SHA-256 hashes.
+- OpenAI-compatible model discovery and chat-completion routes.
+- PostgreSQL, Redis and GPU model containers.
+- Separate backend and frontend container builds.
 
-## Run locally
+## Local development / GPU host
 
-1. Copy `.env.product.example` to `.env.product` and replace all secrets.
-2. On a machine with Docker Compose and NVIDIA Container Toolkit, run:
+1. Copy `.env.product.example` to `.env.product`.
+2. Replace the Django secret and database password with unique values.
+3. Ensure Docker Compose and NVIDIA Container Toolkit are installed on the host.
+4. Run:
 
    ```bash
    docker compose --env-file .env.product -f docker-compose.product.yml up --build
    ```
 
-3. Open `http://localhost:3000`, create an account at `/signup`, and manage API keys at `/developers`.
+5. Open `http://localhost:3000`.
+6. Create an account at `/signup`, sign in at `/login`, and create developer keys at `/developers`.
 
-The first model startup downloads the DeepSeek-R1-Distill-Qwen-7B Q4_K_M weights. The model container is not published to the host; only Django and Next.js are exposed.
+The first model startup downloads DeepSeek-R1-Distill-Qwen-7B Q4_K_M weights. The model server is internal-only. Do not publish port 8080.
 
 ## API
 
 - `GET /api/health/`
-- `POST /api/chat/` (public playground, throttled)
+- `POST /api/chat/` — anonymous or authenticated playground inference.
 - `POST /api/auth/register/`
-- `POST /api/auth/token/`
-- `GET|POST /api/keys/` and `DELETE /api/keys/{id}/`
-- `GET /api/conversations/`
+- `POST /api/auth/token/` — obtain an account token.
+- `GET|POST /api/keys/` — account-token-only key management.
+- `DELETE /api/keys/{id}/` — revoke an owned key.
+- `GET|POST /api/conversations/` — account-token-only conversation management.
+- `GET|DELETE /api/conversations/{id}/`
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 
-Use `Authorization: Bearer <small_LLM_API_key>` for `/v1/*` endpoints and `Authorization: Token <django_token>` for account endpoints.
+Use `Authorization: Token <account-token>` for account and conversation operations. Use `Authorization: Bearer <small_LLM_API_key>` for OpenAI-compatible `/v1/*` endpoints.
 
-## Hosting and costs
+## Configuration
 
-Self-hosting removes per-token inference API charges; it does not make GPU hosting free. Camber GPU compute, storage, network egress and uptime can incur charges. Provision the GPU job and public gateway/networking separately using Camber's supported workflow. Do not expose the llama.cpp model port publicly.
+The browser-facing `NEXT_PUBLIC_API_BASE_URL` must point to the public Django API origin, not the Docker-only service hostname. Set `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS` to the real deployment domains. Keep secrets out of Git and frontend environment variables.
 
-See [PRODUCT_ARCHITECTURE.md](PRODUCT_ARCHITECTURE.md) for routes, architecture, local deployment and remaining launch-hardening work.
+## Deployment caveats
 
-## Legacy prototype
+This repository provides a Compose deployment foundation, not a completed Camber deployment. The GPU host must support NVIDIA containers and persistent volumes. TLS/reverse-proxy configuration, backup automation, monitoring, usage accounting, streaming, password reset/email verification and secure browser session cookies remain launch work. GPU compute and storage are not automatically free.
 
-`app.py` and the original root `Dockerfile`/`docker-compose.yml` are the earlier FastAPI prototype. The Django/Next.js product stack is the intended architecture going forward.
+The original root FastAPI files and Render configuration are retained as a legacy prototype; the Django/Next.js stack is the current product direction.
