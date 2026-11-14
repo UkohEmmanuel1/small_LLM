@@ -1,0 +1,5 @@
+# One RSS/Atom feed URL per line. Add the sources you care about.
+http://feeds.bbci.co.uk/news/technology/rss.xml
+https://hnrss.org/frontpage
+http://export.arxiv.org/rss/cs.CL
+https://techcabal.com/feed/
