@@ -26,7 +26,7 @@ Developer SDK/API ──┘        │
                              └── /v1/chat/completions
 ```
 
-The default model is `Qwen/Qwen2.5-1.5B-Instruct:cheapest`. Change it with `MODEL_ID` to another chat model available to your Hugging Face Inference Providers account.
+The default model is `Qwen/Qwen2.5-1.5B-Instruct:cheapest`. Change it with `MODEL_ID` to another chat model available to your Hugging Face Inference Providers account. Each deployment intentionally serves one configured model to prevent visitors from selecting arbitrary, potentially more expensive models.
 
 ## Run locally (Windows CMD / PowerShell)
 
@@ -123,6 +123,13 @@ Install the client with `pip install openai`.
 
 The included Render configuration uses a free web service for prototyping. Free services can sleep after inactivity and have ephemeral filesystems; this app does not rely on local persistent state. Free instances are not recommended for production workloads. Inference itself is billed separately by the model provider.
 
+## Tests
+
+```bat
+pip install -r requirements-dev.txt
+pytest -q
+```
+
 ## Important operational limitations
 
 This is a deployable MVP, not yet a fully managed multi-tenant API business. API keys are operator-configured through environment variables; there is no self-service account dashboard, billing, persistent usage ledger, streaming, or per-customer quotas yet. Demo rate limiting is in-process and resets when the service restarts. Add a persistent database, distributed rate limiting, observability, and a proper key-management workflow before scaling to public commercial use.
@@ -133,7 +140,7 @@ This is a deployable MVP, not yet a fully managed multi-tenant API business. API
 - `live.py`: RSS collection and retrieval-augmented experimental workflow.
 - `feeds.txt`: sample RSS/Atom feeds.
 
-The public application currently uses a pretrained hosted model, as selected for the product MVP. It does not claim that the experimental from-scratch model has been pretrained or production-trained.
+Install the additional model-training dependencies with `pip install -r requirements-training.txt`. The public application currently uses a pretrained hosted model, as selected for the product MVP. It does not claim that the experimental from-scratch model has been pretrained or production-trained.
 
 ## License
 
