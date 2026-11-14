@@ -1,10 +1,11 @@
 'use client';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 
 type Turn = { role: 'user' | 'assistant'; content: string };
 type Conversation = { id: number; title: string; updated_at: string };
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const getToken = () => typeof window === 'undefined' ? '' : localStorage.getItem('smallllm_token') || '';
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
@@ -15,9 +16,7 @@ export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [signedIn, setSignedIn] = useState(false);
 
-  const getToken = () => typeof window === 'undefined' ? '' : localStorage.getItem('smallllm_token') || '';
-
-  async function loadConversations() {
+  const loadConversations = useCallback(async () => {
     const token = getToken();
     setSignedIn(Boolean(token));
     if (!token) return;
@@ -31,9 +30,9 @@ export default function Home() {
     } catch {
       setError('Could not load your saved conversations.');
     }
-  }
+  }, []);
 
-  useEffect(() => { void loadConversations(); }, []);
+  useEffect(() => { void loadConversations(); }, [loadConversations]);
 
   async function openConversation(id: number) {
     const response = await fetch(`${API_BASE}/api/conversations/${id}/`, {
