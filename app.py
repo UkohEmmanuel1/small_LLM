@@ -36,7 +36,7 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    model: str | None = None
+    model: str | None = Field(default=None, max_length=160)
     messages: list[Message] = Field(min_length=1, max_length=30)
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int = Field(default=256, ge=1, le=MAX_TOKENS)
@@ -66,13 +66,15 @@ def require_api_key(authorization: str | None = Header(default=None)) -> None:
 
 
 async def run_inference(payload: ChatRequest) -> dict:
+    if payload.model and payload.model != MODEL:
+        raise HTTPException(status_code=400, detail=f"This deployment serves only the configured model: {MODEL}")
     if not HF_TOKEN:
         raise HTTPException(
             status_code=503,
             detail="The model provider is not configured. Set HF_TOKEN in the deployment environment.",
         )
     body = {
-        "model": payload.model or MODEL,
+        "model": MODEL,
         "messages": [m.model_dump() for m in payload.messages],
         "temperature": payload.temperature,
         "max_tokens": payload.max_tokens,
@@ -127,6 +129,4 @@ async def demo_chat(payload: ChatRequest):
 async def chat_completions(payload: ChatRequest):
     if payload.stream:
         raise HTTPException(status_code=400, detail="Streaming is not enabled yet. Set stream=false.")
-    result = await run_inference(payload)
-    # Keep the upstream OpenAI-compatible response shape intact.
-    return result
+    return await run_inference(payload)
