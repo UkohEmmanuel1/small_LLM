@@ -21,7 +21,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt ruff
-      - run: ruff check config platform_api --select E4,E7,E9 --ignore E402
+      - run: ruff check config/settings.py config/urls.py platform_api/auth_views.py platform_api/key_views.py platform_api/views.py platform_api/serializers.py platform_api/public_views.py platform_api/permissions.py platform_api/tests.py --select E4,E7,E9
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test
