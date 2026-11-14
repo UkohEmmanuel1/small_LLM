@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import APIKey
@@ -8,6 +9,8 @@ from .permissions import IsAccountTokenUser
 
 class APIKeyListCreateView(APIView):
     permission_classes = [IsAccountTokenUser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "api_keys"
     def get(self, request):
         rows = APIKey.objects.filter(user=request.user).order_by("-created_at")
         return Response([{
@@ -25,6 +28,8 @@ class APIKeyListCreateView(APIView):
 
 class APIKeyRevokeView(APIView):
     permission_classes = [IsAccountTokenUser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "api_keys"
     def delete(self, request, pk):
         key = get_object_or_404(APIKey, user=request.user, pk=pk)
         if not key.revoked_at:
